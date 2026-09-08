@@ -5,6 +5,10 @@ import BaseModal from '@/components/BaseModal.vue'
 const props = defineProps({
   table: { type: String, default: '' },
   people: { type: Number, default: 1 },
+  /** Set while the order is being written; the dialog is the only thing that waits. */
+  busy: { type: Boolean, default: false },
+  /** Why the last attempt failed, shown here so retrying is one tap. */
+  error: { type: String, default: '' },
 })
 
 const emit = defineEmits(['close', 'submit'])
@@ -12,16 +16,21 @@ const emit = defineEmits(['close', 'submit'])
 const table = ref(props.table)
 const people = ref(props.people)
 
-const canSubmit = computed(() => table.value.trim().length > 0)
+const canSubmit = computed(() => table.value.trim().length > 0 && !props.busy)
 
 function submit() {
   if (!canSubmit.value) return
   emit('submit', { table: table.value.trim(), people: people.value })
 }
+
+/** Backdrop and Escape close the dialog, but not out from under a write in flight. */
+function close() {
+  if (!props.busy) emit('close')
+}
 </script>
 
 <template>
-  <BaseModal @close="emit('close')">
+  <BaseModal @close="close">
     <h2 class="px-6 pt-6 pb-2 text-center text-xl font-extrabold tracking-wide text-neutral-600">
       MEJA
     </h2>
@@ -62,11 +71,14 @@ function submit() {
       </div>
     </div>
 
+    <p v-if="error" class="px-6 pb-4 text-center text-base text-red-600">{{ error }}</p>
+
     <div class="flex border-t border-neutral-200">
       <button
         type="button"
-        class="flex-1 border-r border-neutral-200 py-4 text-base font-bold tracking-wide text-emerald-700 active:bg-neutral-100"
-        @click="emit('close')"
+        class="flex-1 border-r border-neutral-200 py-4 text-base font-bold tracking-wide text-emerald-700 active:bg-neutral-100 disabled:text-neutral-300 disabled:active:bg-transparent"
+        :disabled="busy"
+        @click="close"
       >
         BATAL
       </button>
@@ -76,7 +88,7 @@ function submit() {
         :disabled="!canSubmit"
         @click="submit"
       >
-        OK
+        {{ busy ? 'MENYIMPAN...' : 'OK' }}
       </button>
     </div>
   </BaseModal>

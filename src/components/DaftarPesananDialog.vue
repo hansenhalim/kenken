@@ -46,7 +46,7 @@ const emit = defineEmits(['close', 'open'])
             {{ order.extraCount }} tambahan
           </span>
         </span>
-        <span class="block text-base text-neutral-500">{{ formatTimestamp(order.lastActivityAt) }}</span>
+        <span class="block text-base text-neutral-500">{{ formatTimestamp(order.createdAt) }}</span>
       </button>
     </div>
 

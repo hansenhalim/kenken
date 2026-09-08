@@ -146,24 +146,6 @@ function addCustomItem(item) {
       </div>
     </header>
 
-    <!-- A rejected write is unrecoverable: the cart was cleared on save -->
-    <div
-      v-if="pesanan.saveError"
-      class="flex shrink-0 items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2"
-    >
-      <span class="min-w-0 flex-1 text-base font-semibold text-red-700">
-        {{ pesanan.saveError }}
-      </span>
-      <button
-        type="button"
-        class="shrink-0 p-1 text-red-700"
-        aria-label="Tutup peringatan"
-        @click="pesanan.clearSaveError()"
-      >
-        <X :size="22" :stroke-width="2.5" />
-      </button>
-    </div>
-
     <!-- Extra mode: every tap below adds to a new extra on this order -->
     <div
       v-if="cart.extraFor"

@@ -2,11 +2,12 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import {
   Timestamp,
-  addDoc,
   collection,
+  doc,
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   where,
 } from 'firebase/firestore'
@@ -14,10 +15,16 @@ import { db } from '@/lib/firebase'
 import { familyOf, orderFromDoc, summarizeRoots } from '@/lib/orders'
 import { useAuthStore } from '@/stores/auth'
 
-const startOfToday = () => {
-  const now = new Date()
-  return Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()))
-}
+const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate())
+
+const pad = (value) => String(value).padStart(2, '0')
+
+/** `2026-09-08` — the counter's day, compared as a string so it sorts by date. */
+const dayKey = (date) =>
+  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+
+/** Allocates root numbers. One document, reset in place each morning. */
+const COUNTER = ['counters', 'orders']
 
 /**
  * Parked orders, live from Firestore. A root order is `order-{n}`; anything
@@ -33,11 +40,16 @@ const startOfToday = () => {
 export const usePesananStore = defineStore('pesanan', () => {
   const orders = ref([])
 
-  /** False until the first snapshot lands — numbering is derived from it. */
+  /** False until the first snapshot lands. */
   const loaded = ref(false)
 
-  /** Set when Firestore rejects a write, which the cart can no longer undo. */
-  const saveError = ref('')
+  /**
+   * Midnight the listener was anchored to. Firestore froze that bound into the
+   * query when it was built, so a tablet left open past midnight keeps serving
+   * the previous day — screens date themselves from this rather than the clock
+   * so they say which day they are actually showing.
+   */
+  const since = ref(null)
 
   let unsubscribe = null
 
@@ -57,16 +69,6 @@ export const usePesananStore = defineStore('pesanan', () => {
       lines: lines.map((line) => ({ ...line })),
     }))
 
-  const nextExtraNumber = (rootNumber) =>
-    orders.value.filter((order) => order.rootNumber === rootNumber && order.extraNumber).length + 1
-
-  /**
-   * Highest number in view, plus one. Two tablets saving in the same instant —
-   * or both working through a wifi outage — can land on the same number.
-   */
-  const nextRootNumber = () =>
-    orders.value.reduce((highest, order) => Math.max(highest, order.rootNumber), 0) + 1
-
   /** One row per table for DAFTAR PESANAN — the listener holds the whole day,
    *  so every family is complete here. */
   const rootSummaries = computed(() => summarizeRoots(orders.value))
@@ -74,55 +76,100 @@ export const usePesananStore = defineStore('pesanan', () => {
   /** Tables with a parked order — extras are folded into their root. */
   const count = computed(() => rootSummaries.value.length)
 
-  /**
-   * Firestore resolves this against the local cache first, so the new order
-   * appears immediately and syncs in the background. Awaiting it would hang
-   * for as long as the connection is down, so failures are reported instead.
-   */
-  function append(order) {
+  const recordFor = (order) => {
     const auth = useAuthStore()
-    const record = {
+    return {
       ...order,
       lines: order.lines.map((line) => ({ ...line })),
       createdBy: auth.name,
       createdByUid: auth.uid,
       createdAt: serverTimestamp(),
     }
-    addDoc(collection(db, 'orders'), record).catch(() => {
-      saveError.value = `Gagal menyimpan ${order.name}, orderan tidak tersimpan`
+  }
+
+  /**
+   * Numbers come from the server so two tablets can never land on the same one:
+   * a duplicate root number would merge two tables into one bill, since
+   * `familyOf` groups on it.
+   *
+   * The cost is that saving now needs a connection. A transaction cannot be
+   * served from the local cache, so an order taken offline fails outright
+   * rather than syncing later — deliberate, and the reason every caller awaits
+   * this and keeps the cart until it resolves.
+   */
+  async function allocateRootNumber(transaction) {
+    const counter = doc(db, ...COUNTER)
+    const snapshot = await transaction.get(counter)
+    const today = dayKey(new Date())
+    const stored = snapshot.exists() ? snapshot.data() : null
+
+    // Only ever move the day forward. A tablet whose clock is fast can roll the
+    // counter over early; letting a slow one roll it back would restart at 1
+    // while numbers from the day it skipped are still being handed out.
+    const rollOver = !stored || stored.day < today
+    const rootNumber = rollOver ? 1 : stored.next
+
+    transaction.set(counter, { day: rollOver ? today : stored.day, next: rootNumber + 1 })
+    return rootNumber
+  }
+
+  async function save({ table, people, lines }) {
+    return runTransaction(db, async (transaction) => {
+      const rootNumber = await allocateRootNumber(transaction)
+      transaction.set(
+        doc(collection(db, 'orders')),
+        recordFor({
+          name: `order-${rootNumber}`,
+          rootNumber,
+          extraNumber: null,
+          table,
+          people,
+          lines,
+        }),
+      )
     })
   }
 
-  function save({ table, people, lines }) {
-    const rootNumber = nextRootNumber()
-    append({
-      name: `order-${rootNumber}`,
-      rootNumber,
-      extraNumber: null,
-      table,
-      people,
-      lines,
-    })
-  }
+  /**
+   * Each root counts its own extras, because a transaction can only read
+   * documents — not query for the siblings already fired on this bill.
+   *
+   * A duplicate extra number would only mislabel a round, not merge bills, so
+   * this runs in a transaction for its failure semantics rather than its
+   * numbering: it reports being offline, where an awaited write would hang.
+   */
+  async function saveExtra({ rootNumber, table, people, lines }) {
+    const root = rootOrder(rootNumber)
+    if (!root) throw new Error(`order-${rootNumber} tidak ditemukan`)
+    const rootRef = doc(db, 'orders', root.id)
 
-  function saveExtra({ rootNumber, table, people, lines }) {
-    const extraNumber = nextExtraNumber(rootNumber)
-    append({
-      name: `extra-${extraNumber}-order-${rootNumber}`,
-      rootNumber,
-      extraNumber,
-      table,
-      people,
-      lines,
+    return runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(rootRef)
+      const extraNumber = (snapshot.data()?.extraCount ?? 0) + 1
+
+      transaction.update(rootRef, { extraCount: extraNumber })
+      transaction.set(
+        doc(collection(db, 'orders')),
+        recordFor({
+          name: `extra-${extraNumber}-order-${rootNumber}`,
+          rootNumber,
+          extraNumber,
+          table,
+          people,
+          lines,
+        }),
+      )
     })
   }
 
   /** Orders are readable only while signed in, so the listener follows the session. */
   function subscribe() {
     if (unsubscribe) return
+    const start = startOfDay(new Date())
+    since.value = start
     const today = query(
       collection(db, 'orders'),
-      where('createdAt', '>=', startOfToday()),
+      where('createdAt', '>=', Timestamp.fromDate(start)),
       orderBy('createdAt', 'desc'),
     )
     unsubscribe = onSnapshot(today, (snapshot) => {
@@ -136,16 +183,13 @@ export const usePesananStore = defineStore('pesanan', () => {
     unsubscribe = null
     orders.value = []
     loaded.value = false
-  }
-
-  function clearSaveError() {
-    saveError.value = ''
+    since.value = null
   }
 
   return {
     orders,
     loaded,
-    saveError,
+    since,
     rootSummaries,
     count,
     rootOrder,
@@ -155,6 +199,5 @@ export const usePesananStore = defineStore('pesanan', () => {
     saveExtra,
     subscribe,
     unsubscribe: unsubscribeAll,
-    clearSaveError,
   }
 })

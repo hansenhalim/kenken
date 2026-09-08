@@ -14,6 +14,8 @@ const router = useRouter()
 
 const openKey = ref(null)
 const mejaOpen = ref(false)
+const saving = ref(false)
+const saveError = ref('')
 
 /** Extras are saved as their own record, but the UI only ever names the root. */
 const title = computed(() =>
@@ -31,12 +33,32 @@ function removeLine() {
   openKey.value = null
 }
 
-function applyMeja(meja) {
-  if (cart.extraFor) {
-    pesanan.saveExtra({ rootNumber: cart.extraFor.rootNumber, ...meja, lines: cart.lines })
-  } else {
-    pesanan.save({ ...meja, lines: cart.lines })
+/**
+ * Waits for the order to reach the server before letting go of it. Numbers are
+ * allocated in a transaction, so a save can fail outright — clearing the cart
+ * first would lose the order with no way to retype it.
+ */
+async function applyMeja(meja) {
+  if (saving.value) return
+  saving.value = true
+  saveError.value = ''
+
+  try {
+    if (cart.extraFor) {
+      await pesanan.saveExtra({ rootNumber: cart.extraFor.rootNumber, ...meja, lines: cart.lines })
+    } else {
+      await pesanan.save({ ...meja, lines: cart.lines })
+    }
+  } catch (failure) {
+    saveError.value =
+      failure.code === 'unavailable'
+        ? 'Butuh koneksi untuk menyimpan orderan'
+        : 'Gagal menyimpan, coba lagi'
+    return
+  } finally {
+    saving.value = false
   }
+
   cart.clear()
   mejaOpen.value = false
   router.push({ name: 'orderan-baru' })
@@ -64,7 +86,7 @@ function applyMeja(meja) {
         type="button"
         class="flex size-12 items-center justify-center rounded-md bg-emerald-700 text-white disabled:bg-neutral-300"
         aria-label="Selesaikan orderan"
-        :disabled="cart.lines.length === 0 || !pesanan.loaded"
+        :disabled="cart.lines.length === 0 || (!!cart.extraFor && !pesanan.loaded)"
         @click="mejaOpen = true"
       >
         <Check :size="28" :stroke-width="3" />
@@ -139,6 +161,8 @@ function applyMeja(meja) {
       v-if="mejaOpen"
       :table="cart.meja.table"
       :people="cart.meja.people"
+      :busy="saving"
+      :error="saveError"
       @close="mejaOpen = false"
       @submit="applyMeja"
     />
