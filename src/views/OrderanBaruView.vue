@@ -5,6 +5,7 @@ import { ChevronDown, Menu, MoreVertical, Plus, Search, ShoppingBag, X } from 'l
 import AppDrawer from '@/components/AppDrawer.vue'
 import CustomItemDialog from '@/components/CustomItemDialog.vue'
 import DaftarPesananDialog from '@/components/DaftarPesananDialog.vue'
+import KategoriDialog from '@/components/KategoriDialog.vue'
 import ProductListItem from '@/components/ProductListItem.vue'
 import { products } from '@/data/products'
 import { useCartStore } from '@/stores/cart'
@@ -18,15 +19,40 @@ const menuOpen = ref(false)
 const drawerOpen = ref(false)
 const customItemOpen = ref(false)
 const daftarPesananOpen = ref(false)
+const kategoriOpen = ref(false)
 
 const searching = ref(false)
 const query = ref('')
 const searchInput = ref(null)
 
+/** The chosen category, or null for the whole menu. */
+const category = ref(null)
+
+/**
+ * Every category in the menu with its size, built once — `products` is static.
+ * Names are shown exactly as the till writes them, so what a waiter reads here
+ * matches what the export says.
+ */
+const categories = products
+  .reduce((all, product) => {
+    const found = all.find((entry) => entry.name === product.category)
+    if (found) {
+      found.count += 1
+    } else {
+      all.push({ name: product.category, count: 1 })
+    }
+    return all
+  }, [])
+  .sort((a, b) => a.name.localeCompare(b.name))
+
 const visibleProducts = computed(() => {
+  const inCategory = category.value
+    ? products.filter((product) => product.category === category.value.name)
+    : products
+
   const needle = query.value.trim().toLowerCase()
-  if (!needle) return products
-  return products.filter(
+  if (!needle) return inCategory
+  return inCategory.filter(
     (product) =>
       product.name.toLowerCase().includes(needle) ||
       product.code.toLowerCase().includes(needle),
@@ -34,9 +60,17 @@ const visibleProducts = computed(() => {
 })
 
 async function openSearch() {
+  // Search covers the whole menu. The category button is hidden while the search
+  // bar stands in its place, and a filter you cannot see is one you forget.
+  category.value = null
   searching.value = true
   await nextTick()
   searchInput.value?.focus()
+}
+
+function selectCategory(next) {
+  category.value = next
+  kategoriOpen.value = false
 }
 
 function closeSearch() {
@@ -217,10 +251,14 @@ function addCustomItem(item) {
 
       <button
         type="button"
-        class="flex items-center gap-3 border-l border-neutral-200 px-4 py-3"
+        class="flex min-w-0 items-center gap-3 border-l border-neutral-200 px-4 py-3"
+        aria-haspopup="dialog"
+        @click="kategoriOpen = true"
       >
-        <span class="text-xl font-semibold text-neutral-800">Semua item</span>
-        <ChevronDown :size="26" :stroke-width="2.25" class="text-emerald-700" />
+        <span class="min-w-0 truncate text-xl font-semibold text-neutral-800">
+          {{ category ? category.name : 'Semua item' }}
+        </span>
+        <ChevronDown :size="26" :stroke-width="2.25" class="shrink-0 text-emerald-700" />
       </button>
     </div>
 
@@ -269,9 +307,18 @@ function addCustomItem(item) {
       @submit="addCustomItem"
     />
 
+    <KategoriDialog
+      v-if="kategoriOpen"
+      :categories="categories"
+      :total="products.length"
+      :selected="category?.name ?? null"
+      @close="kategoriOpen = false"
+      @select="selectCategory"
+    />
+
     <DaftarPesananDialog
       v-if="daftarPesananOpen"
-      :orders="pesanan.rootSummaries"
+      :orders="pesanan.activeSummaries"
       :locked="cart.lines.length > 0"
       @close="daftarPesananOpen = false"
       @open="openPesanan"

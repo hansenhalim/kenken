@@ -1,7 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, Check } from 'lucide-vue-next'
+import { ArrowLeft, Check, Trash2 } from 'lucide-vue-next'
+import HapusOrderanDialog from '@/components/HapusOrderanDialog.vue'
 import ItemDetailDialog from '@/components/ItemDetailDialog.vue'
 import MejaDialog from '@/components/MejaDialog.vue'
 import { formatTime } from '@/lib/time'
@@ -16,6 +17,10 @@ const openKey = ref(null)
 const mejaOpen = ref(false)
 const saving = ref(false)
 const saveError = ref('')
+
+const hapusOpen = ref(false)
+const deleting = ref(false)
+const deleteError = ref('')
 
 /** Extras are saved as their own record, but the UI only ever names the root. */
 const title = computed(() =>
@@ -61,6 +66,32 @@ async function applyMeja(meja) {
 
   cart.clear()
   mejaOpen.value = false
+  router.push({ name: 'orderan-baru' })
+}
+
+/**
+ * Only reachable in extra mode, where there is a saved bill to remove. The
+ * order is hidden rather than destroyed, so RIWAYAT keeps the record.
+ */
+async function hapusOrderan() {
+  if (deleting.value) return
+  deleting.value = true
+  deleteError.value = ''
+
+  try {
+    await pesanan.remove(cart.extraFor.rootNumber)
+  } catch (failure) {
+    deleteError.value =
+      failure.code === 'unavailable'
+        ? 'Butuh koneksi untuk menghapus'
+        : 'Gagal menghapus, coba lagi'
+    return
+  } finally {
+    deleting.value = false
+  }
+
+  cart.clear()
+  hapusOpen.value = false
   router.push({ name: 'orderan-baru' })
 }
 </script>
@@ -149,6 +180,17 @@ async function applyMeja(meja) {
       </button>
     </main>
 
+    <!-- Extra mode only: without a saved bill there is nothing to delete -->
+    <button
+      v-if="cart.extraFor"
+      type="button"
+      class="fixed right-6 bottom-6 flex size-16 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-transform active:scale-95"
+      aria-label="Hapus orderan"
+      @click="hapusOpen = true"
+    >
+      <Trash2 :size="28" :stroke-width="2" />
+    </button>
+
     <ItemDetailDialog
       v-if="openKey"
       :line="cart.lineByKey(openKey)"
@@ -165,6 +207,15 @@ async function applyMeja(meja) {
       :error="saveError"
       @close="mejaOpen = false"
       @submit="applyMeja"
+    />
+
+    <HapusOrderanDialog
+      v-if="hapusOpen"
+      :name="cart.extraFor.rootName"
+      :busy="deleting"
+      :error="deleteError"
+      @close="hapusOpen = false"
+      @confirm="hapusOrderan"
     />
   </div>
 </template>

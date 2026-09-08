@@ -37,3 +37,7 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+# Till exports. products.js is generated from these and is the committed copy;
+# the raw dumps are working files, not source.
+src/data/DATA_BARANG_*.csv

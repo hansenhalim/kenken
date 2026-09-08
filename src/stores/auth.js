@@ -42,8 +42,6 @@ export const useAuthStore = defineStore('auth', () => {
   /** There are no profile records: the name on every bill is the login ID. */
   const name = computed(() => user.value?.email?.split('@')[0] ?? '')
 
-  const uid = computed(() => user.value?.uid ?? null)
-
   /**
    * A UI gate, not a security boundary: rules let any signed-in user read every
    * order, so this hides the screen rather than the data.
@@ -83,5 +81,5 @@ export const useAuthStore = defineStore('auth', () => {
     await signOut(auth)
   }
 
-  return { user, error, busy, signedIn, name, uid, isAdmin, init, signIn, logOut }
+  return { user, error, busy, signedIn, name, isAdmin, init, signIn, logOut }
 })

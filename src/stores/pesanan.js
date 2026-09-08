@@ -73,8 +73,15 @@ export const usePesananStore = defineStore('pesanan', () => {
    *  so every family is complete here. */
   const rootSummaries = computed(() => summarizeRoots(orders.value))
 
+  /**
+   * Live bills. Deleted ones are dropped here rather than in `summarizeRoots`
+   * because RIWAYAT can still ask for them — waiters browse the tables that
+   * exist, the admin can look at what was removed.
+   */
+  const activeSummaries = computed(() => rootSummaries.value.filter((bill) => !bill.deleted))
+
   /** Tables with a parked order — extras are folded into their root. */
-  const count = computed(() => rootSummaries.value.length)
+  const count = computed(() => activeSummaries.value.length)
 
   const recordFor = (order) => {
     const auth = useAuthStore()
@@ -82,7 +89,6 @@ export const usePesananStore = defineStore('pesanan', () => {
       ...order,
       lines: order.lines.map((line) => ({ ...line })),
       createdBy: auth.name,
-      createdByUid: auth.uid,
       createdAt: serverTimestamp(),
     }
   }
@@ -184,6 +190,31 @@ export const usePesananStore = defineStore('pesanan', () => {
     })
   }
 
+  /**
+   * Takes a bill off the waiters' list without destroying it. RIWAYAT can still
+   * show it on request, marked with who removed it, so a bill that vanishes
+   * mid-service leaves something an owner can ask about.
+   *
+   * Extras fired against a bill deleted underneath them are still accepted;
+   * they surface only under the bill that no longer appears.
+   */
+  async function remove(rootNumber) {
+    const auth = useAuthStore()
+    const root = rootOrder(rootNumber)
+    if (!root) throw new Error(`order-${rootNumber} tidak ditemukan`)
+    const rootRef = doc(db, 'orders', root.id)
+
+    return runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(rootRef)
+      if (!snapshot.exists()) throw new Error(`order-${rootNumber} tidak ditemukan`)
+      transaction.update(rootRef, {
+        deleted: true,
+        deletedBy: auth.name,
+        deletedAt: serverTimestamp(),
+      })
+    })
+  }
+
   /** Orders are readable only while signed in, so the listener follows the session. */
   function subscribe() {
     if (unsubscribe) return
@@ -213,6 +244,7 @@ export const usePesananStore = defineStore('pesanan', () => {
     loaded,
     since,
     rootSummaries,
+    activeSummaries,
     count,
     rootOrder,
     orderFamily,
@@ -220,6 +252,7 @@ export const usePesananStore = defineStore('pesanan', () => {
     save,
     saveExtra,
     acknowledge,
+    remove,
     subscribe,
     unsubscribe: unsubscribeAll,
   }

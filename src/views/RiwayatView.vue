@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ChevronDown, ChevronRight, Menu } from 'lucide-vue-next'
 import AppDrawer from '@/components/AppDrawer.vue'
 import { formatDay, formatTime } from '@/lib/time'
@@ -15,6 +15,17 @@ import { usePesananStore } from '@/stores/pesanan'
 const pesanan = usePesananStore()
 
 const drawerOpen = ref(false)
+
+/** Deleted bills are clutter by default and evidence on request. */
+const showDeleted = ref(false)
+
+const bills = computed(() =>
+  showDeleted.value ? pesanan.rootSummaries : pesanan.activeSummaries,
+)
+
+const deletedCount = computed(
+  () => pesanan.rootSummaries.length - pesanan.activeSummaries.length,
+)
 
 /** Root order ids that are expanded to show their rounds. */
 const expanded = ref(new Set())
@@ -81,12 +92,25 @@ async function acknowledge(bill) {
     <main class="min-h-0 flex-1 overflow-y-auto">
       <!-- Dated from the listener, not the clock: a tablet left open past
            midnight keeps serving the day it started on, and says so. -->
-      <h2
+      <div
         v-if="pesanan.since"
-        class="sticky top-0 border-b border-neutral-200 bg-neutral-50 px-4 py-2 text-base font-bold text-neutral-500"
+        class="sticky top-0 flex items-baseline gap-3 border-b border-neutral-200 bg-neutral-50 px-4 py-2"
       >
-        {{ formatDay(pesanan.since) }}
-      </h2>
+        <h2 class="min-w-0 flex-1 truncate text-base font-bold text-neutral-500">
+          {{ formatDay(pesanan.since) }}
+        </h2>
+
+        <!-- Offered only when there is something to reveal -->
+        <button
+          v-if="deletedCount > 0"
+          type="button"
+          class="shrink-0 text-base font-bold text-emerald-700 active:text-emerald-900"
+          :aria-pressed="showDeleted"
+          @click="showDeleted = !showDeleted"
+        >
+          {{ showDeleted ? 'Sembunyikan yang dihapus' : `Tampilkan yang dihapus (${deletedCount})` }}
+        </button>
+      </div>
 
       <!-- An empty list before the first snapshot means "not yet", not "none" -->
       <p v-if="!pesanan.loaded" class="px-4 py-6 text-center text-lg text-neutral-400">
@@ -94,14 +118,14 @@ async function acknowledge(bill) {
       </p>
 
       <p
-        v-else-if="pesanan.rootSummaries.length === 0"
+        v-else-if="bills.length === 0"
         class="px-4 py-6 text-center text-lg text-neutral-400"
       >
         Tidak ada orderan
       </p>
 
       <div
-        v-for="bill in pesanan.rootSummaries"
+        v-for="bill in bills"
         :key="bill.id"
         class="border-b border-neutral-100"
       >
@@ -143,6 +167,12 @@ async function acknowledge(bill) {
               >
                 {{ bill.extraCount }} tambahan
               </span>
+              <span
+                v-if="bill.deleted"
+                class="rounded bg-red-100 px-2 py-0.5 text-base text-red-700"
+              >
+                Dihapus oleh {{ bill.deletedBy }}
+              </span>
             </span>
           </span>
         </button>
@@ -179,7 +209,7 @@ async function acknowledge(bill) {
           </div>
 
           <!-- Below the rounds: marking a bill means having read them -->
-          <div class="px-4 pt-3">
+          <div v-if="!bill.deleted" class="px-4 pt-3">
             <p v-if="bill.acked" class="py-1 text-center text-base text-neutral-400">
               Sudah diproses
             </p>
