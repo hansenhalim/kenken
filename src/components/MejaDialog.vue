@@ -41,6 +41,8 @@ function close() {
         id="nomor-meja"
         v-model="table"
         type="text"
+        inputmode="numeric"
+        pattern="[0-9]*"
         placeholder="Nomor Meja"
         class="mt-2 w-full rounded-md border border-emerald-700 px-4 py-3 text-center text-2xl text-neutral-900 placeholder:text-neutral-400 focus:outline-2 focus:outline-emerald-700"
       >

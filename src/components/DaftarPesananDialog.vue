@@ -1,6 +1,6 @@
 <script setup>
 import BaseModal from '@/components/BaseModal.vue'
-import { formatTimestamp } from '@/lib/time'
+import { formatTime } from '@/lib/time'
 
 defineProps({
   /** Root-order summaries from `pesanan.rootSummaries`, not raw order records. */
@@ -31,7 +31,14 @@ const emit = defineEmits(['close', 'open'])
         :disabled="locked"
         @click="emit('open', order)"
       >
-        <span class="block text-xl font-bold text-neutral-900">{{ order.name }}</span>
+        <span class="flex items-baseline gap-2">
+          <span class="min-w-0 flex-1 truncate text-xl font-bold text-neutral-900">
+            {{ order.name }}
+          </span>
+          <span class="shrink-0 text-base text-neutral-500 tabular-nums">
+            {{ formatTime(order.createdAt) }}
+          </span>
+        </span>
         <span class="mt-1 flex flex-wrap gap-1">
           <span class="rounded bg-neutral-100 px-2 py-0.5 text-base text-neutral-500">
             Nomor Meja {{ order.table }}/{{ order.people }}
@@ -46,7 +53,6 @@ const emit = defineEmits(['close', 'open'])
             {{ order.extraCount }} tambahan
           </span>
         </span>
-        <span class="block text-base text-neutral-500">{{ formatTimestamp(order.createdAt) }}</span>
       </button>
     </div>
 

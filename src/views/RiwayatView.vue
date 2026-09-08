@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { ChevronDown, ChevronRight, Menu } from 'lucide-vue-next'
 import AppDrawer from '@/components/AppDrawer.vue'
-import { formatDay, formatTimestamp } from '@/lib/time'
+import { formatDay, formatTime } from '@/lib/time'
 import { usePesananStore } from '@/stores/pesanan'
 
 /**
@@ -23,6 +23,38 @@ function toggle(id) {
   const next = new Set(expanded.value)
   next.has(id) ? next.delete(id) : next.add(id)
   expanded.value = next
+}
+
+/** The bill being marked, and where the last failure belongs — one panel acts at a time. */
+const acking = ref(null)
+const ackError = ref(null)
+
+/**
+ * Marking closes the bill: the admin is done with it, and the row greying as it
+ * collapses is the confirmation. A failure keeps the panel open instead, since
+ * there is no undo to correct a mark that only looked like it landed.
+ */
+async function acknowledge(bill) {
+  if (acking.value) return
+  acking.value = bill.id
+  ackError.value = null
+
+  try {
+    await pesanan.acknowledge(bill.rootNumber)
+  } catch (failure) {
+    ackError.value = {
+      id: bill.id,
+      message:
+        failure.code === 'unavailable'
+          ? 'Butuh koneksi untuk menandai'
+          : 'Gagal menandai, coba lagi',
+    }
+    return
+  } finally {
+    acking.value = null
+  }
+
+  toggle(bill.id)
 }
 </script>
 
@@ -73,9 +105,12 @@ function toggle(id) {
         :key="bill.id"
         class="border-b border-neutral-100"
       >
+        <!-- Dimmed as a whole rather than recoloured piece by piece, so the
+             badges keep their own meaning and nothing drifts out of step. -->
         <button
           type="button"
           class="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-neutral-100"
+          :class="{ 'opacity-50': bill.acked }"
           :aria-expanded="expanded.has(bill.id)"
           @click="toggle(bill.id)"
         >
@@ -87,7 +122,14 @@ function toggle(id) {
           />
 
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-xl font-bold text-neutral-900">{{ bill.name }}</span>
+            <span class="flex items-baseline gap-2">
+              <span class="min-w-0 flex-1 truncate text-xl font-bold text-neutral-900">
+                {{ bill.name }}
+              </span>
+              <span class="shrink-0 text-base text-neutral-500 tabular-nums">
+                {{ formatTime(bill.createdAt) }}
+              </span>
+            </span>
             <span class="mt-1 flex flex-wrap gap-1">
               <span class="rounded bg-neutral-100 px-2 py-0.5 text-base text-neutral-500">
                 Nomor Meja {{ bill.table }}/{{ bill.people }}
@@ -102,10 +144,6 @@ function toggle(id) {
                 {{ bill.extraCount }} tambahan
               </span>
             </span>
-            <!-- When the table was opened, matching the order rows are sorted in -->
-            <span class="block text-base text-neutral-500">
-              {{ formatTimestamp(bill.createdAt) }}
-            </span>
           </span>
         </button>
 
@@ -115,7 +153,7 @@ function toggle(id) {
             <p class="flex flex-wrap items-baseline gap-x-2 px-4 pt-3 pb-1">
               <span class="text-base font-bold text-neutral-500">{{ round.name }}</span>
               <span class="text-sm text-neutral-400">
-                {{ formatTimestamp(round.createdAt) }} &middot; {{ round.createdBy }}
+                {{ formatTime(round.createdAt) }} &middot; {{ round.createdBy }}
               </span>
             </p>
 
@@ -138,6 +176,31 @@ function toggle(id) {
                 {{ line.qty }}
               </span>
             </div>
+          </div>
+
+          <!-- Below the rounds: marking a bill means having read them -->
+          <div class="px-4 pt-3">
+            <p v-if="bill.acked" class="py-1 text-center text-base text-neutral-400">
+              Sudah diproses
+            </p>
+
+            <template v-else>
+              <button
+                type="button"
+                class="w-full rounded-md border border-emerald-700 py-3 text-base font-bold tracking-wide text-emerald-700 active:bg-emerald-50 disabled:border-neutral-300 disabled:text-neutral-300"
+                :disabled="acking === bill.id"
+                @click="acknowledge(bill)"
+              >
+                {{ acking === bill.id ? 'MENANDAI...' : 'TANDAI SUDAH DIPROSES' }}
+              </button>
+
+              <p
+                v-if="ackError && ackError.id === bill.id"
+                class="pt-2 text-center text-base text-red-600"
+              >
+                {{ ackError.message }}
+              </p>
+            </template>
           </div>
         </div>
       </div>

@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { ArrowLeft, Check } from 'lucide-vue-next'
 import ItemDetailDialog from '@/components/ItemDetailDialog.vue'
 import MejaDialog from '@/components/MejaDialog.vue'
-import { formatTimestamp } from '@/lib/time'
+import { formatTime } from '@/lib/time'
 import { useCartStore } from '@/stores/cart'
 import { usePesananStore } from '@/stores/pesanan'
 
@@ -101,7 +101,7 @@ async function applyMeja(meja) {
           <p class="flex flex-wrap items-baseline gap-x-2 px-4 pt-2 pb-1">
             <span class="text-base font-bold text-neutral-500">{{ round.name }}</span>
             <span class="text-sm text-neutral-400">
-              {{ formatTimestamp(round.createdAt) }} &middot; {{ round.createdBy }}
+              {{ formatTime(round.createdAt) }} &middot; {{ round.createdBy }}
             </span>
           </p>
 

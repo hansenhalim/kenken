@@ -1,9 +1,7 @@
 const pad = (value) => String(value).padStart(2, '0')
 
-/** `2026-09-06 20:59:32` — the format orders carried before Firestore. */
-export const formatTimestamp = (date) =>
-  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
-  `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+/** `20:59` — every screen shows one day at a time, so the date is in its header. */
+export const formatTime = (date) => `${pad(date.getHours())}:${pad(date.getMinutes())}`
 
 /** `Senin, 7 September 2026` — a day header, not a record stamp. */
 export const formatDay = (date) =>

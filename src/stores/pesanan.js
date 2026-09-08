@@ -147,7 +147,9 @@ export const usePesananStore = defineStore('pesanan', () => {
       const snapshot = await transaction.get(rootRef)
       const extraNumber = (snapshot.data()?.extraCount ?? 0) + 1
 
-      transaction.update(rootRef, { extraCount: extraNumber })
+      // Clearing the mark rides in the same update as the count it invalidates,
+      // so no future path can add a round without un-marking the bill.
+      transaction.update(rootRef, { extraCount: extraNumber, acked: false })
       transaction.set(
         doc(collection(db, 'orders')),
         recordFor({
@@ -159,6 +161,26 @@ export const usePesananStore = defineStore('pesanan', () => {
           lines,
         }),
       )
+    })
+  }
+
+  /**
+   * Marks a bill as processed. One way: only a new round clears it, in the
+   * transaction that appends one.
+   *
+   * Transacted for the same reason saves are, and one more: a write queued
+   * offline would land after any extra fired in the meantime and overwrite the
+   * flag that extra cleared, leaving a bill marked over a round nobody read.
+   */
+  async function acknowledge(rootNumber) {
+    const root = rootOrder(rootNumber)
+    if (!root) throw new Error(`order-${rootNumber} tidak ditemukan`)
+    const rootRef = doc(db, 'orders', root.id)
+
+    return runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(rootRef)
+      if (!snapshot.exists()) throw new Error(`order-${rootNumber} tidak ditemukan`)
+      transaction.update(rootRef, { acked: true })
     })
   }
 
@@ -197,6 +219,7 @@ export const usePesananStore = defineStore('pesanan', () => {
     referenceRounds,
     save,
     saveExtra,
+    acknowledge,
     subscribe,
     unsubscribe: unsubscribeAll,
   }
