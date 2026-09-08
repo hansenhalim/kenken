@@ -2,6 +2,7 @@
 import { computed, nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ChevronDown, Menu, MoreVertical, Plus, Search, ShoppingBag, X } from 'lucide-vue-next'
+import AppDrawer from '@/components/AppDrawer.vue'
 import CustomItemDialog from '@/components/CustomItemDialog.vue'
 import DaftarPesananDialog from '@/components/DaftarPesananDialog.vue'
 import ProductListItem from '@/components/ProductListItem.vue'
@@ -14,6 +15,7 @@ const pesanan = usePesananStore()
 const router = useRouter()
 
 const menuOpen = ref(false)
+const drawerOpen = ref(false)
 const customItemOpen = ref(false)
 const daftarPesananOpen = ref(false)
 
@@ -66,7 +68,7 @@ function openPesanan(order) {
   cart.startExtra({
     rootNumber: root.rootNumber,
     rootName: root.name,
-    referenceLines: pesanan.referenceLines(root.rootNumber),
+    referenceRounds: pesanan.referenceRounds(root.rootNumber),
     table: root.table,
     people: root.people,
   })
@@ -86,7 +88,12 @@ function addCustomItem(item) {
     <header
       class="flex shrink-0 items-center gap-2 border-b border-neutral-200 px-4 py-2.5"
     >
-      <button type="button" class="p-2 text-emerald-700" aria-label="Buka menu">
+      <button
+        type="button"
+        class="p-2 text-emerald-700"
+        aria-label="Buka menu"
+        @click="drawerOpen = true"
+      >
         <Menu :size="26" :stroke-width="2.5" />
       </button>
 
@@ -138,6 +145,24 @@ function addCustomItem(item) {
         </div>
       </div>
     </header>
+
+    <!-- A rejected write is unrecoverable: the cart was cleared on save -->
+    <div
+      v-if="pesanan.saveError"
+      class="flex shrink-0 items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2"
+    >
+      <span class="min-w-0 flex-1 text-base font-semibold text-red-700">
+        {{ pesanan.saveError }}
+      </span>
+      <button
+        type="button"
+        class="shrink-0 p-1 text-red-700"
+        aria-label="Tutup peringatan"
+        @click="pesanan.clearSaveError()"
+      >
+        <X :size="22" :stroke-width="2.5" />
+      </button>
+    </div>
 
     <!-- Extra mode: every tap below adds to a new extra on this order -->
     <div
@@ -254,6 +279,8 @@ function addCustomItem(item) {
       </span>
     </button>
 
+    <AppDrawer v-if="drawerOpen" @close="drawerOpen = false" />
+
     <CustomItemDialog
       v-if="customItemOpen"
       @close="customItemOpen = false"
@@ -262,7 +289,7 @@ function addCustomItem(item) {
 
     <DaftarPesananDialog
       v-if="daftarPesananOpen"
-      :orders="pesanan.orders"
+      :orders="pesanan.rootSummaries"
       :locked="cart.lines.length > 0"
       @close="daftarPesananOpen = false"
       @open="openPesanan"

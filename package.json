@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "firebase": "^12.18.0",
     "lucide-vue-next": "^1.0.0",
     "pinia": "^4.0.3",
     "tailwindcss": "^4.3.3",

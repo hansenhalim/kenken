@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ArrowLeft, Check } from 'lucide-vue-next'
 import ItemDetailDialog from '@/components/ItemDetailDialog.vue'
 import MejaDialog from '@/components/MejaDialog.vue'
+import { formatTimestamp } from '@/lib/time'
 import { useCartStore } from '@/stores/cart'
 import { usePesananStore } from '@/stores/pesanan'
 
@@ -14,14 +15,9 @@ const router = useRouter()
 const openKey = ref(null)
 const mejaOpen = ref(false)
 
-const extraName = computed(() => {
-  if (!cart.extraFor) return ''
-  const next = pesanan.nextExtraNumber(cart.extraFor.rootNumber)
-  return `extra-${next}-${cart.extraFor.rootName}`
-})
-
+/** Extras are saved as their own record, but the UI only ever names the root. */
 const title = computed(() =>
-  cart.extraFor ? extraName.value : `${cart.totalQty} ITEM`,
+  cart.extraFor ? cart.extraFor.rootName : `${cart.totalQty} ITEM`,
 )
 
 function applyDetail({ qty, note }) {
@@ -68,7 +64,7 @@ function applyMeja(meja) {
         type="button"
         class="flex size-12 items-center justify-center rounded-md bg-emerald-700 text-white disabled:bg-neutral-300"
         aria-label="Selesaikan orderan"
-        :disabled="cart.lines.length === 0"
+        :disabled="cart.lines.length === 0 || !pesanan.loaded"
         @click="mejaOpen = true"
       >
         <Check :size="28" :stroke-width="3" />
@@ -78,23 +74,30 @@ function applyMeja(meja) {
     <!-- Cart lines -->
     <main class="min-h-0 flex-1 overflow-y-auto py-2">
       <template v-if="cart.extraFor">
-        <p class="px-4 pt-2 pb-1 text-sm font-bold tracking-wide text-neutral-400">
-          REFERENSI &middot; {{ cart.extraFor.rootName }}
-        </p>
+        <!-- One block per round already fired on this order, oldest first -->
+        <div v-for="round in cart.extraFor.referenceRounds" :key="round.id" class="pb-2">
+          <p class="flex flex-wrap items-baseline gap-x-2 px-4 pt-2 pb-1">
+            <span class="text-base font-bold text-neutral-500">{{ round.name }}</span>
+            <span class="text-sm text-neutral-400">
+              {{ formatTimestamp(round.createdAt) }} &middot; {{ round.createdBy }}
+            </span>
+          </p>
 
-        <div
-          v-for="line in cart.extraFor.referenceLines"
-          :key="line.key"
-          class="flex h-14 items-center gap-4 px-4 text-neutral-400"
-        >
-          <span class="min-w-0 flex-1 truncate text-lg font-bold">{{ line.name }}</span>
-          <span
-            class="flex size-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-base font-bold tabular-nums"
+          <div
+            v-for="line in round.lines"
+            :key="line.key"
+            class="flex h-14 items-center gap-4 px-4 text-neutral-400"
           >
-            {{ line.qty }}
-          </span>
+            <span class="min-w-0 flex-1 truncate text-lg font-bold">{{ line.name }}</span>
+            <span
+              class="flex size-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-base font-bold tabular-nums"
+            >
+              {{ line.qty }}
+            </span>
+          </div>
         </div>
 
+        <!-- Unsaved, so deliberately unnamed: its extra number isn't settled yet -->
         <p class="border-t border-neutral-200 px-4 pt-3 pb-1 text-sm font-bold tracking-wide text-neutral-400">
           TAMBAHAN
         </p>

@@ -13,7 +13,8 @@ export const useCartStore = defineStore('cart', () => {
 
   /**
    * When set, the cart is building an extra on an existing root order:
-   * { rootNumber, rootName, referenceLines }. Reference lines are read-only.
+   * { rootNumber, rootName, referenceRounds }. The rounds already fired on
+   * this order are read-only reference, grouped so each keeps its own name.
    */
   const extraFor = ref(null)
 
@@ -71,17 +72,13 @@ export const useCartStore = defineStore('cart', () => {
   }
 
   /**
-   * Start adding to an existing order. Its lines are kept as read-only
-   * reference; only newly tapped items go into `lines`.
+   * Start adding to an existing order. The rounds already on it are kept as
+   * read-only reference; only newly tapped items go into `lines`.
    */
-  function startExtra({ rootNumber, rootName, referenceLines, table, people }) {
+  function startExtra({ rootNumber, rootName, referenceRounds, table, people }) {
     lines.value = []
     meja.value = { table, people }
-    extraFor.value = {
-      rootNumber,
-      rootName,
-      referenceLines: referenceLines.map((line) => ({ ...line })),
-    }
+    extraFor.value = { rootNumber, rootName, referenceRounds }
   }
 
   function exitExtra() {

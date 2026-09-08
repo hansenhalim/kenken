@@ -1,7 +1,9 @@
 <script setup>
 import BaseModal from '@/components/BaseModal.vue'
+import { formatTimestamp } from '@/lib/time'
 
 defineProps({
+  /** Root-order summaries from `pesanan.rootSummaries`, not raw order records. */
   orders: { type: Array, required: true },
   /** Adding to an order would collide with an in-progress cart, so rows lock. */
   locked: { type: Boolean, default: false },
@@ -37,8 +39,14 @@ const emit = defineEmits(['close', 'open'])
           <span class="rounded bg-neutral-100 px-2 py-0.5 text-base text-neutral-500">
             Dibuat oleh {{ order.createdBy }}
           </span>
+          <span
+            v-if="order.extraCount > 0"
+            class="rounded bg-amber-100 px-2 py-0.5 text-base text-amber-900"
+          >
+            {{ order.extraCount }} tambahan
+          </span>
         </span>
-        <span class="block text-base text-neutral-500">{{ order.createdAt }}</span>
+        <span class="block text-base text-neutral-500">{{ formatTimestamp(order.lastActivityAt) }}</span>
       </button>
     </div>
 
